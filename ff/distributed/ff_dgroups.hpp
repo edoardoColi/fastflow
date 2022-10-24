@@ -202,19 +202,42 @@ private:
             
             try {
                 std::string endpoint;
-                ar(cereal::make_nvp("endpoint", endpoint)); std::vector endp(split(endpoint, ':'));
-                address = endp[0]; port = std::stoi(endp[1]);
+                ar(cereal::make_nvp("endpoint", endpoint));
+                if (endpoint.find("@") != std::string::npos && endpoint.find(":") != std::string::npos) {
+                  std::vector endp1(split(endpoint, '@'));
+                  std::vector endp2(split(endp1[1], ':'));
+                  //user = endp1[0];
+                  address = endp2[0];
+                  port = std::stoi(endp2[1]);
+                }
+                else if (endpoint.find("@") != std::string::npos) {
+                  std::vector endp1(split(endpoint, '@'));
+                  //user = endp1[0];
+                  address = endp1[1];
+                  //port = rand() % 15000 + 50000;
+                }
+                else if (endpoint.find(":") != std::string::npos) {
+                  std::vector endp2(split(endpoint, ':'));
+                  //user = "";
+                  address = endp2[0];
+                  port = std::stoi(endp2[1]);
+                }
+                else {
+                  //user = "";
+                  address = endpoint;
+                  //port = rand() % 15000 + 50000;
+                }
             } catch (cereal::Exception&) {ar.setNextName(nullptr);}
 
             try {
                 ar(cereal::make_nvp("batchSize", batchSize));
             } catch (cereal::Exception&) {ar.setNextName(nullptr);}
 
-             try {
+            try {
                 ar(cereal::make_nvp("internalMessageOTF", internalMessageOTF));
             } catch (cereal::Exception&) {ar.setNextName(nullptr);}
 
-             try {
+            try {
                 ar(cereal::make_nvp("messageOTF", messageOTF));
             } catch (cereal::Exception&) {ar.setNextName(nullptr);}
 

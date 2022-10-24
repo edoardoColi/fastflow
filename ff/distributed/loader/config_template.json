@@ -1,0 +1,30 @@
+{
+    "shared_filesystem"         : " yes | [no]",
+    "protocol"                  : " TCP | [MPI]",
+    "ssh_key_dir"               : "[path]",
+    "default_home_dir"          : "[path]",
+    "groups" : [
+        {
+            "name"              : " name_group",
+            "endpoint"          : "[user@]ip:port",
+            "home_dir"          : "[path]",
+            "pass_dl"           : " yes | [no]",
+            "rm_dl"             : "[name_lib ... ] (Shell Expansion Enable)",
+            "my_dl"             : "[name_lib ... ] (Shell Expansion Enable)",
+            "pass_all_files"    : " no | [yes]",
+            "rm_files"          : "[name_file ... | name_dir ... ] (Shell Expansion Enable)",
+            "files"             : "[name_file ... | name_dir ... ]"
+        },
+        {
+            "name"              : " name_group",
+            "endpoint"          : "[user@]ip:port",
+            "home_dir"          : "[path]",
+            "pass_dl"           : " yes | [no]",
+            "rm_dl"             : "[name_lib ... ] (Shell Expansion Enable)",
+            "my_dl"             : "[name_lib ... ] (Shell Expansion Enable)",
+            "pass_all_files"    : " no | [yes]",
+            "rm_files"          : "[name_file ... | name_dir ... ] (Shell Expansion Enable)",
+            "files"             : "[name_file ... | name_dir ... ]"
+        }
+    ]
+}
