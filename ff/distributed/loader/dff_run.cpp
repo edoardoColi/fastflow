@@ -123,7 +123,6 @@ struct G {
     std::string name, endpoint, home_dir, pass_dl, rm_dl, my_dl, pass_all_files, rm_files, files; // Configuration parameters in json file for each Group
     std::string lib_dir, in_dir;
     std::string user, host, port;
-//    std::string  preCmd; //DA LEVARE
     int fd = 0;
     FILE* file = nullptr;
 
@@ -132,25 +131,127 @@ struct G {
         ar(cereal::make_nvp("name", name));
         
         try {
-            std::string endpoint;
-            ar(cereal::make_nvp("endpoint", endpoint)); std::vector endp(split(endpoint, ':'));
-            host = endp[0]; //port = std::stoi(endp[1]);
+            ar(cereal::make_nvp("endpoint", endpoint));
+            if (endpoint.find("@") != std::string::npos && endpoint.find(":") != std::string::npos) {
+                std::vector endp1(split(endpoint, '@'));
+                std::vector endp2(split(endp1[1], ':'));
+                user = endp1[0];
+                host = endp2[0];
+                port = endp2[1];
+            }
+            else if (endpoint.find("@") != std::string::npos) {
+                std::vector endp1(split(endpoint, '@'));
+                user = endp1[0];
+                host = endp1[1];
+                port = "";
+            }
+            else if (endpoint.find(":") != std::string::npos) {
+                std::vector endp2(split(endpoint, ':'));
+                user = "";
+                host = endp2[0];
+                port = endp2[1];
+            }
+            else {
+                user = "";
+                host = endpoint;
+                port = "";
+            }
         } catch (cereal::Exception&) {
-            host = "127.0.0.1"; // set the host to localhost if not found in config file!
+            user = "";
+            host = "127.0.0.1";
+            port = "";
+            ar.setNextName(nullptr);
+        }
+
+        try { // If "home_dir" remote path does not exist will be created later in the dff_deploy script
+            ar(cereal::make_nvp("home_dir", home_dir));
+        } catch (cereal::Exception&) {
+            home_dir = default_home_dir;
+            ar.setNextName(nullptr);
+        }
+/*		try { // If "lib_dir" remote path does not exist will be created later in the dff_deploy script
+            ar(cereal::make_nvp("lib_dir", lib_dir));
+        } catch (cereal::Exception&) {
+            lib_dir = default_remote_lib_dir;
+            ar.setNextName(nullptr);
+        }
+*/		lib_dir=home_dir + "/lib";
+/*		try { // If "in_dir" remote path does not exist will be created later in the dff_deploy script
+            ar(cereal::make_nvp("in_dir", in_dir));
+        } catch (cereal::Exception&) {
+            in_dir = default_remote_in_dir;
+            ar.setNextName(nullptr);
+        }
+*/		in_dir = home_dir + "/files";
+
+        try {
+            ar(cereal::make_nvp("pass_dl", pass_dl));
+            if (!pass_dl.compare("yes")) // compare() returns 0 if are the same
+                pass_dl = "1";
+            else if (!pass_dl.compare("no"))
+                pass_dl = "0";
+            else if (pass_dl.compare("yes") && pass_dl.compare("no"))
+                pass_dl = "1";
+        } catch (cereal::Exception&) {
+            pass_dl = "1";
             ar.setNextName(nullptr);
         }
 
         try {
-            ar(cereal::make_nvp("preCmd", preCmd)); 
+            ar(cereal::make_nvp("rm_dl", rm_dl));
         } catch (cereal::Exception&) {
+            rm_dl = "";
+            ar.setNextName(nullptr);
+        }
+
+        try {
+            ar(cereal::make_nvp("rm_files", rm_files));
+        } catch (cereal::Exception&) {
+            rm_files = "";
+            ar.setNextName(nullptr);
+        }
+
+        try {
+            ar(cereal::make_nvp("my_dl", my_dl)); //TODO ogni cosa che viene scritta viene mandata direttamente al rsync nella certella della libreria, non ci sono controlli che siano effettivamente librerie
+        } catch (cereal::Exception&) {
+            my_dl = "";
+            ar.setNextName(nullptr);
+        }
+
+        try {
+            ar(cereal::make_nvp("pass_all_files", pass_all_files));
+            if (!pass_all_files.compare("yes")) // compare() returns 0 if are the same
+                pass_all_files = "1";
+            else if (!pass_all_files.compare("no"))
+                pass_all_files = "0";
+            else if (pass_all_files.compare("yes") && pass_all_files.compare("no"))
+                pass_all_files = "0";
+        } catch (cereal::Exception&) {
+            pass_all_files = "0";
+            ar.setNextName(nullptr);
+        }
+
+        try {
+            ar(cereal::make_nvp("files", files));
+        } catch (cereal::Exception&) {
+            files = "";
             ar.setNextName(nullptr);
         }
     }
 
     void run(){
-        char b[1024]; // ssh -t // trovare MAX ARGV
+        char b[1024];
         
-        sprintf(b, " %s %s %s %s %s --DFF_Config=%s --DFF_GName=%s %s 2>&1 %s", (isRemote() ? "ssh -T " : ""), (isRemote() ? host.c_str() : ""), (isRemote() ? "'" : ""), this->preCmd.c_str(),  executable.c_str(), configFile.c_str(), this->name.c_str(), toBePrinted(this->name) ? "" : "> /dev/null", (isRemote() ? "'" : ""));
+        sprintf(b, " %s %s %s %s --DFF_Config=%s --DFF_GName=%s %s 2>&1 %s",
+            (isRemote() ? "ssh -T " : ""), 
+            (isRemote() ? host.c_str() : ""), 
+            (isRemote() ? "'" : ""), 
+            executable.c_str(), 
+            configFile.c_str(), 
+            this->name.c_str(), 
+            toBePrinted(this->name) ? "" : "> /dev/null", 
+            (isRemote() ? "'" : ""));
+
        std::cout << "Executing the following command: " << b << std::endl;
         file = popen(b, "r");
         fd = fileno(file);
@@ -447,7 +548,7 @@ int main(int argc, char** argv) {
                 configFile.c_str()
             );
         }
-        else {
+        else { //TODO funziona quando la macchina da cui lo lancio e' nel pool di quelle che eseguono anche (testare)
 //			std::string id = "MPI_" + rankFile.substr(rankFile.find_last_not_of("0123456789") + 1);    // Use the PID extracted from the end of rankfile to create a unique reference
 //			std::string id = "MPI_" + executable.substr(executable.find_last_of("/\\") + 1);           // Use the name of the executable to create a reference
 
@@ -511,8 +612,9 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-
-            sprintf(command, "DFF_home=%s &>/dev/null; cd %s; LD_LIBRARY_PATH=\"%s:$LD_LIBRARY_PATH\"; mpirun -x LD_LIBRARY_PATH -np %lu --rankfile %s %s/%s %s --DFF_Config=%s/%s;",
+//TODO cosa serve le cose remote se lo lancio sempre in locale?
+//faccio i c_move dei file anche della macchina cerrente anche se non e' nell'esecuzione
+            sprintf(command, "DFF_home=%s &>/dev/null; cd %s &>/dev/null; LD_LIBRARY_PATH=\"%s:$LD_LIBRARY_PATH\"; mpirun -x LD_LIBRARY_PATH -np %lu --rankfile %s %s/%s %s --DFF_Config=%s/%s;",
                 default_home_dir.c_str(),
                 default_home_dir.c_str(),
                 lib_dir.c_str(),
