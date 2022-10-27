@@ -301,7 +301,7 @@ struct G {
             toBePrinted(this->name) ? "" : "> /dev/null"
         );
 
-        sprintf(c_shared_fs, " %s %s %s %s --DFF_Config=%s %s --DFF_GName=%s %s 2>&1 %s",
+        sprintf(c_shared_fs, " %s %s %s %s %s --DFF_Config=%s --DFF_GName=%s %s 2>&1 %s",
             (isRemote() ? "ssh -T " : ""),
             (isRemote() ? host.c_str() : ""),
             (isRemote() ? "'" : ""),
