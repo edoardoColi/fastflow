@@ -240,30 +240,126 @@ struct G {
     }
 
     void run(){
-        char b[1024];
-        
-        sprintf(b, " %s %s %s %s --DFF_Config=%s --DFF_GName=%s %s 2>&1 %s",
-            (isRemote() ? "ssh -T " : ""), 
-            (isRemote() ? host.c_str() : ""), 
-            (isRemote() ? "'" : ""), 
-            executable.c_str(), 
-            configFile.c_str(), 
-            this->name.c_str(), 
-            toBePrinted(this->name) ? "" : "> /dev/null", 
-            (isRemote() ? "'" : ""));
+        char command[4096];
+        char c_shared_fs[1024];
+        char c_local[1024];
+        char c_remote[1024];
+        char c_deploy[1024];
 
-       std::cout << "Executing the following command: " << b << std::endl;
-        file = popen(b, "r");
-        fd = fileno(file);
-        
-        if (fd == -1) {
-            printf("Failed to run command\n" );
-            exit(1);
+        std::string deploy_files("");
+        if (!pass_all_files.compare("1"))
+            deploy_files = all_files;
+        else {
+            std::vector tmp_yes(split(files, ' '));
+            for (auto elem : tmp_yes) {
+                if ( cmd_files.find(elem) != cmd_files.end())
+                    deploy_files += std::string(cmd_files[elem]) + " ";
+            }
         }
 
-        int flags = fcntl(fd, F_GETFL, 0); 
-        flags |= O_NONBLOCK; 
-        fcntl(fd, F_SETFL, flags);
+        sprintf (c_deploy, "DFF_DRY=%d DFF_dl=%s DFF_rm_dl=\"%s\" DFF_my_dl=\"%s\" DFF_rm_files=\"%s\" DFF_ssh=%s DFF_lib='%s' DFF_home='%s' DFF_io='%s' %s/dff_deploy.sh %s%s%s %s %s %s; ",
+            dry_run,
+            pass_dl.c_str(),
+            rm_dl.c_str(),
+            my_dl.c_str(),
+            rm_files.c_str(),
+            ssh_key_dir.c_str(),
+            lib_dir.c_str(), // Use quotes to inhibit initial expansion
+            home_dir.c_str(), // Use quotes to inhibit initial expansion
+            in_dir.c_str(), // Use quotes to inhibit initial expansion
+            argv_zero.substr(0, argv_zero.find_last_of("/\\") + 1).c_str(), // Working directory contains dff_run and dff_deploy.sh
+            user.c_str(),
+            user.compare("") ? "@" : "",
+            host.c_str(),
+            executable.c_str(),
+            configFile.c_str(),
+            deploy_files.c_str()
+        );
+
+        sprintf(c_remote, "ssh -T -i %s/ff_key %s%s%s 'DFF_home=%s &>/dev/null; cd %s; LD_LIBRARY_PATH=\"%s:${LD_LIBRARY_PATH}\" %s/%s %s --DFF_Config=%s/%s --DFF_GName=%s %s 2>&1;';",
+            ssh_key_dir.c_str(),
+            user.c_str(),
+            user.compare("") ? "@" : "",
+            host.c_str(),
+            home_dir.c_str(),
+            home_dir.c_str(),
+            lib_dir.c_str(),
+            home_dir.c_str(),
+            executable.substr(executable.find_last_of("/\\") + 1).c_str(), // Extract the name of the file being executed
+            executable_remote_param.c_str(),
+            home_dir.c_str(),
+            configFile.substr(configFile.find_last_of("/\\") + 1).c_str(), // Extract the name of the configuration file was parsed
+            this->name.c_str(),
+            toBePrinted(this->name) ? "" : "> /dev/null"
+        );
+
+        sprintf(c_local, "%s %s --DFF_Config=%s --DFF_GName=%s %s 2>&1;",
+            executable.c_str(),
+            executable_param.c_str(),
+            configFile.c_str(),
+            this->name.c_str(),
+            toBePrinted(this->name) ? "" : "> /dev/null"
+        );
+
+        sprintf(c_shared_fs, " %s %s %s %s --DFF_Config=%s %s --DFF_GName=%s %s 2>&1 %s",
+            (isRemote() ? "ssh -T " : ""),
+            (isRemote() ? host.c_str() : ""),
+            (isRemote() ? "'" : ""),
+            executable.c_str(),
+            executable_param.c_str(),
+            configFile.c_str(),
+            this->name.c_str(),
+            toBePrinted(this->name) ? "" : "> /dev/null",
+            (isRemote() ? "'" : "")
+        );
+
+        if (shared_fs)
+            sprintf(command,"%s",
+                c_shared_fs
+            );
+        else
+            sprintf(command,"%s %s %s",
+                isRemote() ? c_deploy : "",
+                isRemote() ? "deploy_out=$?; if ! [ $deploy_out = 0 ]; then echo 'Failed: Problem with dff_deploy.sh. Stopped execution before exec.'; exit $deploy_out; fi;" : "",
+                isRemote() ? c_remote : c_local
+            );
+
+        if (dry_run){
+            if (shared_fs) {
+                std::cout << "On " << user.c_str() << (user.compare("") ? "@" : "") << host.c_str() << std::endl;
+                if (isRemote()) // Show the command sent remotely (the substring between quotes in c_shared_fs)
+                    fprintf(stdout, "(ssh)\n  %s\n\n", getRemoteCmd(c_shared_fs).c_str());
+                else
+                    std::cout << c_shared_fs << "\n" << std::endl;
+            }
+            else {
+                if (isRemote()) { // Execute pre-command "dff_deploy.sh" and show the command sent remotely (the substring between quotes in c_remote)
+                    if (option_V) std::cout << "Pre-command: " << c_deploy << std::endl;
+                    if (system(c_deploy) != 0)
+                        std::cout << "Deploy command failed" << std::endl;
+                    std::cout << "On " << user.c_str() << (user.compare("") ? "@" : "") << host.c_str() << std::endl;
+                    fprintf(stdout, "(ssh)\n  %s\n\n", getRemoteCmd(c_remote).c_str());
+                }
+                else {
+                    std::cout << "On " << user.c_str() << (user.compare("") ? "@" : "") << host.c_str() << std::endl;
+                    std::cout << c_local << "\n" << std::endl;
+                }
+            }
+        }
+        else {
+            // Show and execute the entire 'command'
+            std::cout << "Executing the following command:\n" << (isRemote() ? "      " : "" ) << command << std::endl;
+            file = popen(command, "r");
+            fd = fileno(file);
+            if (fd == -1) {
+                fprintf(stderr, "Failed to run command\n" );
+                exit(1);
+            }
+
+            int flags = fcntl(fd, F_GETFL, 0);
+            flags |= O_NONBLOCK;
+            fcntl(fd, F_SETFL, flags);
+        }
     }
 
     bool isRemote(){
@@ -276,6 +372,19 @@ struct G {
         convertToIP(hostname, ip2); // To have an effective translation remember to setup file "/etc/hosts" correctly
         if (strncmp(ip1,ip2,INET_ADDRSTRLEN)==0) return false;
         return true; // Is remote
+    }
+
+    std::string getRemoteCmd(std::string cmd){
+        std::string tmp;
+        std::size_t posA, posB;
+
+        if (cmd.find_first_of("'\\") == std::string::npos)
+            return cmd;
+        posA = cmd.find_first_of("'\\")+1;
+        posB = cmd.find_last_of("'\\");
+        if (posA-1 == posB)
+            return cmd;
+        return cmd.substr(posA,posB-posA);
     }
 };
 
@@ -548,7 +657,7 @@ int main(int argc, char** argv) {
                 configFile.c_str()
             );
         }
-        else { //TODO funziona quando la macchina da cui lo lancio e' nel pool di quelle che eseguono anche (testare)
+        else { //TODO funziona quando la macchina da cui lo lancio e' nel pool di quelle che eseguono anche (testare)?
 //			std::string id = "MPI_" + rankFile.substr(rankFile.find_last_not_of("0123456789") + 1);    // Use the PID extracted from the end of rankfile to create a unique reference
 //			std::string id = "MPI_" + executable.substr(executable.find_last_of("/\\") + 1);           // Use the name of the executable to create a reference
 
@@ -613,7 +722,7 @@ int main(int argc, char** argv) {
                 }
             }
 //TODO cosa serve le cose remote se lo lancio sempre in locale?
-//faccio i c_move dei file anche della macchina cerrente anche se non e' nell'esecuzione
+//faccio i c_move dei file anche della macchina cerrente anche se non e' nell'esecuzione?
             sprintf(command, "DFF_home=%s &>/dev/null; cd %s &>/dev/null; LD_LIBRARY_PATH=\"%s:$LD_LIBRARY_PATH\"; mpirun -x LD_LIBRARY_PATH -np %lu --rankfile %s %s/%s %s --DFF_Config=%s/%s;",
                 default_home_dir.c_str(),
                 default_home_dir.c_str(),
