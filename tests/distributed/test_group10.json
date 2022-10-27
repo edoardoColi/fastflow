@@ -1,4 +1,6 @@
 {
+	"#shared_filesystem":"no",
+	"#protocol":"",
     "groups" : [
     {   
         "endpoint" : "localhost:8004",

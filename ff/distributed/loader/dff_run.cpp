@@ -516,7 +516,7 @@ int main(int argc, char** argv) {
     try {
         cereal::JSONInputArchive ar(is);
         try {
-            std::string tmpShared;
+            std::string tmpShared; //TODO qua sotto sembra che se non e definito genera problemi...
             ar(cereal::make_nvp("shared_filesystem", tmpShared)); // Get parameter "shared_filesystem" from the json file
             if (!tmpShared.compare("yes")) // compare() returns 0 if are the same
                 shared_fs = true;
